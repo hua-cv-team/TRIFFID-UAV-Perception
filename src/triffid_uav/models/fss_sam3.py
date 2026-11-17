@@ -88,6 +88,7 @@ class FssSam3Backend:
             raise ValueError('FSS-SAM3 layouts exist for 1 or 5 supports per class')
         self.shots = supports.shots
         self.torch = torch
+        self.diagnostics = []  # per run: a worker keeps one backend for every flight
         self.references = {c.id: [s.load() for s in supports.for_class(c)] for c in classes}
         if self.model is not None:
             return

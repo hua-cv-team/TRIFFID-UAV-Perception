@@ -51,6 +51,46 @@ docker compose run --rm uav overlays outputs/point_detections.json   # debug ove
 
 The image pins FSS-SAM3 to commit `b82ba83`. Weights and supports are never baked into the image.
 
+## In the TRIFFID pipeline
+
+In `triffid-full-pipeline` this repository is a submodule, and its image runs as the `perception`
+service (`docker compose` profile `perception`) with the `worker` command instead of `run`:
+
+```
+segment.ready (ingest, the same event gsplat gets, on our own queue perception.queue)
+   -> run() on /data/segments/<dataset>.mp4 + /data/telemetry/<dataset>.srt
+   -> /data/perception/<dataset>/point_detections.json, polygon_detections.json, run.json, frames/
+   -> unity.ready: project_points and project_masks, with flight_id = the segment.ready job_id
+```
+
+It runs in parallel with gsplat. Unity keeps a request whose flight it has not staged yet in a
+waiting queue and runs it when gsplat's stage job for that flight is done (Unity's readme,
+"Requests"). The model is loaded once at start; the worker exits at start if the weights or the
+support bank are missing. A failed flight is reported on `pipeline.error` (`source:
+perception-worker`) and the next one runs. A task with no detections sends no request. Re-uploading
+a dataset replaces its folder in `/data/perception`.
+
+Settings come from the environment (see `worker.py`): `RABBITMQ_*`, `TELEMETRY_DIR`,
+`PERCEPTION_OUTPUT_DIR`, and `PERCEPTION_CONFIG` (default `configs/default.yaml`, so classes,
+shots and thresholds are set there as for `run`). The pipeline's `.env` sets
+`PERCEPTION_MODELS_DIR` and `PERCEPTION_SUPPORTS_DIR`, mounted at `/models` and `/app/supports`.
+
+### Polygons in the pipeline (temporary)
+
+The pipeline's flights have no nadir frame and no separate nadir photo: the gimbal stays near
+-58 degrees. Until that is settled, the worker gives the flight's own SRT as the topview SRT, so
+polygons run on the frame whose gimbal pitch is closest to -90 degrees (the earliest one on a
+tie), read from the flight video, and Unity projects them through that frame's camera. The log
+says which frame it took (`topview SRT has N blocks; using FrameCnt …`). Outlines from an oblique
+frame include walls and miss what is hidden, so they are rougher than from a nadir view.
+
+Options to revisit:
+- **Fly it:** a nadir segment in the video, or a nadir photo with its one-block SRT (already
+  supported by `input_topview/`); ingest would need to accept the photo.
+- **Unity's synthetic top view:** segment Unity's `capture_top_view` render and project it through
+  Unity's PNG-mask route (needs a JSON-to-PNG converter, and the detector's quality on a rendered
+  splat is unknown).
+
 ## Run locally
 
 ```bash
@@ -110,6 +150,7 @@ src/triffid_uav/
   export.py           versioned JSON, atomic writes
   ontology.py         38 TRIFFID classes (18 Point, 20 Polygon) with original IDs
   visualize.py        debug overlays
+  worker.py           RabbitMQ worker for the TRIFFID pipeline (python -m triffid_uav worker)
 ```
 
 To add a backend, implement `prepare(classes, supports)`, `predict(rgb, classes)` and `metadata()`
@@ -123,7 +164,7 @@ pytest
 ```
 
 The tests use a synthetic flight, top view and support bank with an injected backend, so they need
-no GPU or weights.
+no GPU or weights. `tests/test_worker.py` covers the pipeline worker without a broker.
 
 ## Third-party
 

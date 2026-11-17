@@ -4,6 +4,7 @@
   check     validate inputs, supports and classes; extract the frames; no model is loaded
   bank      support-bank tools (validate / init / add)
   overlays  draw an output JSON on its frames
+  worker    RabbitMQ worker for the TRIFFID pipeline: segment.ready -> detections -> Unity requests
 """
 import argparse
 import json
@@ -54,6 +55,9 @@ def build_parser():
     add.add_argument('--mask', required=True)
     add.add_argument('--foreground-value', type=int)
 
+    commands.add_parser('worker', help='Consume segment.ready from RabbitMQ and send the detections to Unity '
+                                       '(settings from the environment; see worker.py)')
+
     overlays = commands.add_parser('overlays', help='Render an output JSON on its frames')
     overlays.add_argument('json')
     overlays.add_argument('--output', help='Overlay folder (default: next to the JSON)')
@@ -91,6 +95,9 @@ def main(argv=None):
                 print(json.dumps(report, indent=2))
                 if not report['valid']:
                     sys.exit(2)
+        elif args.command == 'worker':
+            from .worker import serve
+            serve()
         elif args.command == 'overlays':
             from .visualize import visualize
             print(visualize(args.json, args.output))

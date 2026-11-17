@@ -3,6 +3,7 @@ numpy>=1.26
 opencv-python-headless>=4.8
 pillow>=10
 pyyaml>=6
+pika>=1.3                 # RabbitMQ, for the pipeline worker (python -m triffid_uav worker)
 # FSS-SAM3 / SAM3 inference imports (traced from an image-model build and one prediction).
 timm>=1.0.17
 ftfy==6.1.1
